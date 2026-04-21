@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWS Nexus | OS</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/frappe-gantt/0.6.1/frappe-gantt.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/frappe-gantt/0.6.1/frappe-gantt.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: { extend: { fontFamily: { sans:['Inter', 'sans-serif'], serif:['Georgia', 'serif'] }, colors: { brand: { black: '#1a1a1a', border: '#e4e4e7', blue: '#2563eb', lightBlue: '#eff6ff', excel: '#107c41' } } } }
+        }
+    </script>
+    <style>
+        body { background-color: #fafafa; color: #1a1a1a; }
+        .tab-content, .view-content { display: none; }
+        .tab-content.active, .view-content.active { display: block; }
+        .input-field { border: 1px solid #d4d4d8; border-radius: 6px; padding: 0.6rem; width: 100%; font-size: 0.875rem; background: #fff;}
+        .input-field:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        .btn-primary { background-color: #1a1a1a; color: #ffffff; padding: 0.6rem 1.2rem; border-radius: 6px; font-weight: 600; font-size: 0.875rem; transition: background 0.2s; cursor: pointer;}
+        .btn-primary:hover { background-color: #2563eb; }
+        .scribble-pad { background-image: repeating-linear-gradient(transparent, transparent 27px, #e5e7eb 28px); line-height: 28px; background-attachment: local; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 4px; }
+        .tour-highlight { position: relative; z-index: 99999; box-shadow: 0 0 0 4px #2563eb, 0 0 0 9999px rgba(0,0,0,0.6); border-radius: 8px; background: white; pointer-events: none; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden selection:bg-brand-blue selection:text-white">
+
+    <!-- STRICT LOGIN SCREEN -->
+    <div id="login-screen" class="fixed inset-0 bg-[#fafafa] z-[999999] flex flex-col items-center justify-center transition-opacity duration-300">
+        <div class="bg-white p-10 max-w-sm w-full border border-brand-border rounded-xl shadow-2xl text-center">
+            <div class="flex justify-center items-baseline gap-1 mb-6">
+                <h1 class="text-5xl font-serif text-[#333]">IWS</h1>
+                <span class="text-2xl font-light text-brand-blue">Nexus</span>
+            </div>
+            <form id="login-form" onsubmit="event.preventDefault(); login();" class="space-y-4 text-left">
+                <div><label class="text-[10px] font-bold text-slate-500 uppercase">Role</label><select id="auth-role" class="input-field"><option value="" disabled selected></option><option value="ceo">CEO (Admin)</option><option value="admin">Chief of Staff</option><option value="sales">Sales Representative</option><option value="project">Project Manager</option><option value="product">Product Manager</option></select></div>
+                <div><label class="text-[10px] font-bold text-slate-500 uppercase">Email Address</label><input type="email" id="auth-email" class="input-field" required></div>
+                <div><label class="text-[10px] font-bold text-slate-500 uppercase">Password</label><input type="password" id="auth-pwd" class="input-field" required></div>
+                <button type="submit" class="btn-primary w-full shadow-md mt-2">Access Nexus</button>
+                <p id="auth-error" class="text-red-500 text-xs font-bold mt-2 text-center hidden">Invalid Credentials.</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <aside class="w-64 bg-white border-r border-brand-border flex flex-col z-20 shrink-0">
+        <div class="py-6 flex flex-col items-center border-b border-brand-border bg-slate-50">
+            <div class="flex items-baseline gap-1"><h2 class="text-3xl font-serif text-[#333]">IWS</h2><span class="text-lg font-light text-brand-blue">Nexus</span></div>
+            <span id="role-badge" class="mt-2 px-3 py-1 bg-brand-black text-white text-[9px] font-bold uppercase rounded shadow-sm">Role</span>
+        </div>
+        <nav class="flex-1 p-3 space-y-1 overflow-y-auto" id="nav-menu"></nav>
+        <div class="p-4 border-t border-brand-border bg-brand-gray/30">
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-1">Data Engine</p>
+            <div class="flex gap-2">
+                <button onclick="exportData()" class="flex-1 text-[10px] py-1.5 bg-white border border-brand-border rounded font-bold shadow-sm hover:text-brand-blue"><i class="fa-solid fa-download"></i> Backup</button>
+                <button onclick="document.getElementById('import-file').click()" class="flex-1 text-[10px] py-1.5 bg-white border border-brand-border rounded font-bold shadow-sm hover:text-brand-blue"><i class="fa-solid fa-upload"></i> Restore</button>
+                <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+            </div>
+            <button onclick="startTour()" class="w-full mt-2 text-[10px] text-brand-blue font-bold py-1.5 hover:underline"><i class="fa-solid fa-route mr-1"></i>Start UI Tour</button>
+        </div>
+        <div class="p-4 border-t border-brand-border bg-white text-xs font-medium flex justify-between items-center"><span id="user-display-email" class="truncate max-w-[150px] text-slate-500">email@</span><button onclick="logout()" class="text-red-500 hover:text-red-700" title="Logout"><i class="fa-solid fa-right-from-bracket"></i></button></div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden bg-[#fafafa]">
+        <header class="h-16 bg-white border-b border-brand-border flex items-center justify-between px-8 shadow-sm shrink-0">
+            <h2 id="page-title" class="text-xl font-bold">Dashboard</h2><div class="text-sm font-medium text-slate-500" id="live-clock"></div>
+        </header>
+
+        <div class="flex-1 overflow-y-auto p-8 relative">
+            <!-- DASHBOARD -->
+            <div id="tab-dashboard" class="tab-content active max-w-7xl mx-auto">
+                <div class="mb-6 bg-white border border-brand-border p-4 rounded-xl shadow-sm flex items-center gap-6"><div class="shrink-0"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Company Master Setup</p><h3 class="text-2xl font-bold" id="dash-prog-text">0%</h3></div><div class="flex-1 h-3 bg-brand-gray rounded-full overflow-hidden"><div id="dash-prog-bar" class="h-full bg-brand-blue w-0 transition-all duration-1000"></div></div></div>
+                <div class="grid grid-cols-4 gap-6 mb-8"><div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm border-l-4 border-l-brand-black"><p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Active Tasks</p><h2 class="text-3xl font-bold" id="dash-tasks">0</h2></div><div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm border-l-4 border-l-brand-blue"><p class="text-xs font-bold text-brand-blue uppercase tracking-wider mb-1">Sales Pipeline</p><h2 class="text-3xl font-bold" id="dash-sales">₹0</h2></div><div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm border-l-4 border-l-red-500"><p class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">Overdue Actions</p><h2 class="text-3xl font-bold text-red-600" id="dash-overdue">0</h2></div><div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm border-l-4 border-l-amber-500"><p class="text-xs font-bold text-amber-500 uppercase tracking-wider mb-1">Upcoming Syncs</p><h2 class="text-3xl font-bold" id="dash-meets">0</h2></div></div>
+                <div class="grid grid-cols-3 gap-8">
+                    <div class="col-span-2 bg-white rounded-xl border border-brand-border shadow-sm flex flex-col h-[400px]">
+                        <div class="p-4 border-b border-brand-border bg-slate-50 rounded-t-xl"><h3 class="font-bold text-brand-black"><i class="fa-solid fa-briefcase text-brand-blue mr-2"></i>My Desk <span class="text-xs font-normal text-slate-500">(Assigned to you)</span></h3></div>
+                        <div class="flex-1 overflow-y-auto p-2" id="dash-my-desk"></div>
+                    </div>
+                    <div class="col-span-1 bg-amber-50/50 rounded-xl border border-brand-border shadow-sm flex flex-col h-[400px]">
+                        <div class="p-4 border-b border-brand-border bg-amber-100/50 rounded-t-xl"><h3 class="font-bold text-amber-800 text-sm uppercase tracking-widest"><i class="fa-solid fa-pen-to-square mr-2"></i>CEO Scratchpad</h3></div>
+                        <textarea id="ceo-notes" class="flex-1 w-full p-4 text-sm bg-transparent resize-none focus:outline-none" placeholder="Auto-saving notepad..." oninput="saveNotes()"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TASKS / OPERATIONS -->
+            <div id="tab-tasks" class="tab-content max-w-7xl mx-auto h-full flex flex-col">
+                <div class="flex justify-between items-center mb-4 shrink-0">
+                    <div><h3 class="text-xl font-bold">Operations Tracker</h3><p class="text-xs text-slate-500">Cross-departmental congruence tasks.</p></div>
+                    <div class="flex gap-3"><div class="bg-white border border-brand-border rounded p-1 flex shadow-sm"><button onclick="setTaskView('list')" id="btn-t-list" class="px-3 py-1 text-xs font-bold rounded bg-brand-black text-white">List</button><button onclick="setTaskView('board')" id="btn-t-board" class="px-3 py-1 text-xs font-bold rounded text-slate-500 hover:text-black">Board</button></div><button onclick="openTaskModal()" class="btn-primary text-xs"><i class="fa-solid fa-plus mr-1"></i> New Task</button></div>
+                </div>
+                <div id="task-view-list" class="view-content active flex-1 bg-white rounded-xl border border-brand-border overflow-hidden shadow-sm flex flex-col"><div class="overflow-y-auto flex-1"><table class="w-full text-left text-sm"><thead class="bg-slate-50 border-b border-brand-border text-slate-500 text-xs uppercase tracking-wider sticky top-0"><tr><th class="p-4">Priority & Task</th><th class="p-4">Category</th><th class="p-4">Assignee</th><th class="p-4">Deadline</th><th class="p-4">Status</th><th class="p-4 text-right">Actions</th></tr></thead><tbody id="task-table" class="divide-y divide-brand-border"></tbody></table></div></div>
+                <div id="task-view-board" class="view-content flex-1 overflow-hidden"><div class="grid grid-cols-3 gap-6 h-full"><div class="bg-slate-50 rounded-xl border border-brand-border flex flex-col"><div class="p-3 border-b border-brand-border font-bold text-sm bg-white rounded-t-xl">To Do</div><div id="kb-todo" class="p-3 flex-1 overflow-y-auto space-y-3"></div></div><div class="bg-blue-50/50 rounded-xl border border-blue-200 flex flex-col"><div class="p-3 border-b border-blue-200 font-bold text-sm bg-white rounded-t-xl text-brand-blue">Ongoing</div><div id="kb-ongoing" class="p-3 flex-1 overflow-y-auto space-y-3"></div></div><div class="bg-white rounded-xl border border-dashed border-brand-border flex flex-col"><div class="p-3 border-b border-dashed border-brand-border font-bold text-sm text-slate-500">Completed Log</div><div id="kb-done" class="p-3 flex-1 overflow-y-auto space-y-3 opacity-70"></div></div></div></div>
+            </div>
+
+            <!-- PROJECTS & PRODUCTS -->
+            <div id="tab-projects" class="tab-content max-w-7xl mx-auto h-full flex flex-col">
+                <div class="flex justify-between items-center mb-6 shrink-0"><div><h3 class="text-xl font-bold">Tech Development Pipeline</h3><p class="text-xs text-slate-500">Products & Projects Roadmap.</p></div><button onclick="openProjectModal()" class="btn-primary text-xs"><i class="fa-solid fa-plus mr-1"></i> Add to Pipeline</button></div>
+                <div class="bg-white p-4 rounded-xl border border-brand-border shadow-sm flex-1 overflow-y-auto"><div id="gantt-chart" class="w-full"></div><div id="proj-list" class="mt-8 border-t border-brand-border pt-4 grid grid-cols-3 gap-4"></div></div>
+            </div>
+
+            <!-- SALES CRM -->
+            <div id="tab-sales" class="tab-content max-w-[1400px] mx-auto h-full flex flex-col">
+                <div class="flex justify-between items-center mb-6 shrink-0"><div><h3 class="text-xl font-bold">Business Development CRM</h3><p class="text-xs text-slate-500">Client Funnel.</p></div><div class="flex gap-3"><button onclick="openSyncModal()" class="text-xs font-bold text-brand-excel border border-green-200 bg-green-50 px-3 py-1.5 rounded hover:bg-brand-excel hover:text-white transition"><i class="fa-solid fa-file-excel mr-1"></i> Import CSV/Sheet</button><button onclick="openLeadModal()" class="btn-primary text-xs"><i class="fa-solid fa-plus mr-1"></i> Add Lead</button></div></div>
+                <div class="flex-1 overflow-x-auto"><div class="flex gap-4 h-full min-w-max" id="sales-kanban"></div></div>
+            </div>
+
+            <!-- MEETINGS HUB -->
+            <div id="tab-meetings" class="tab-content max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-6 shrink-0"><div><h3 class="text-xl font-bold">Meeting Hub & Intelligence</h3><p class="text-xs text-slate-500">GMeet logs, live scribbles, and AI extraction.</p></div><button onclick="openScheduleModal()" class="btn-primary bg-amber-600 hover:bg-amber-700 text-xs shadow-md"><i class="fa-solid fa-video mr-1"></i> Schedule Sync</button></div>
+                <div class="grid grid-cols-3 gap-6" id="meetings-list"></div>
+            </div>
+
+            <!-- COMPLIANCE VAULT -->
+            <div id="tab-compliance" class="tab-content max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-6 shrink-0"><div><h3 class="text-xl font-bold">Compliance Vault</h3><p class="text-xs text-slate-500">Secure record keeping.</p></div><button onclick="openDocModal()" class="btn-primary bg-slate-800 text-xs"><i class="fa-solid fa-upload mr-1"></i> Upload Document</button></div>
+                <div class="bg-white rounded-xl border border-brand-border shadow-sm"><table class="w-full text-left text-sm"><thead class="bg-slate-50 border-b border-brand-border text-xs uppercase text-slate-500"><tr><th class="p-4">Document Name</th><th class="p-4">Category</th><th class="p-4">Date Added</th><th class="p-4 text-right">Action</th></tr></thead><tbody id="doc-list" class="divide-y divide-brand-border"></tbody></table></div>
+            </div>
+
+            <!-- TEAM DIRECTORY (CEO ONLY) -->
+            <div id="tab-team" class="tab-content max-w-7xl mx-auto">
+                <div class="flex justify-between items-center mb-6 shrink-0"><div><h3 class="text-xl font-bold text-red-600"><i class="fa-solid fa-lock mr-2"></i>Access Control & Team</h3><p class="text-xs text-slate-500">Admin Only. Create users, assign emails/passwords, and set roles.</p></div><button onclick="openTeamModal()" class="btn-primary bg-red-600 hover:bg-red-700 text-xs"><i class="fa-solid fa-user-plus mr-1"></i> Create User Login</button></div>
+                <div class="grid grid-cols-3 gap-6" id="team-list"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 🟢 ALL MODALS 🟢 -->
+
+    <!-- TASK MODAL -->
+    <div id="modal-task" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden"><div class="p-4 border-b border-brand-border bg-slate-50 flex justify-between items-center"><h3 class="font-bold">Task Operations</h3><button onclick="closeModal('modal-task')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><form id="form-task" class="p-6 space-y-4 max-h-[75vh] overflow-y-auto"><input type="hidden" id="t-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Task Title</label><input type="text" id="t-title" required class="input-field"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Congruence Category</label><select id="t-cat" class="input-field" required><option value="Technology">Technology</option><option value="Business Development">Business Dev</option><option value="Marketing">Marketing</option><option value="Compliance">Compliance</option></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Priority (1-10)</label><input type="number" id="t-pri" min="1" max="10" class="input-field"></div></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Assignee</label><select id="t-owner" class="input-field" required></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Status</label><select id="t-status" class="input-field"><option value="To Do">To Do</option><option value="Ongoing">Ongoing</option><option value="Completed">Completed</option></select></div></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Start Date</label><input type="date" id="t-start" class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Deadline</label><input type="date" id="t-end" class="input-field"></div></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Dependencies (Link Tasks)</label><input type="text" id="t-dep" class="input-field" placeholder="e.g. Needs T1 completed"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Notes / Detailed Comments</label><textarea id="t-notes" rows="3" class="input-field resize-none"></textarea></div><div class="pt-4 flex justify-between"><button type="button" onclick="deleteTask()" id="btn-del-t" class="text-red-500 text-xs font-bold hidden"><i class="fa-solid fa-trash mr-1"></i>Delete</button><div class="flex gap-2 ml-auto"><button type="button" onclick="closeModal('modal-task')" class="px-4 py-2 text-sm text-slate-600">Cancel</button><button type="submit" class="btn-primary">Save Task</button></div></div></form></div></div>
+
+    <!-- PROJECT MODAL -->
+    <div id="modal-proj" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden"><div class="p-4 border-b border-brand-border bg-slate-50 flex justify-between items-center"><h3 class="font-bold">Pipeline Item</h3><button onclick="closeModal('modal-proj')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><form id="form-proj" class="p-6 space-y-4"><input type="hidden" id="p-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Name</label><input type="text" id="p-name" required class="input-field"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Type</label><select id="p-type" class="input-field"><option value="Product">Product</option><option value="Project">Project</option></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Progress (%)</label><input type="number" id="p-prog" min="0" max="100" value="0" class="input-field"></div></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Start Date</label><input type="date" id="p-start" required class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">End Date</label><input type="date" id="p-end" required class="input-field"></div></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Dependencies (Comma separated IDs)</label><input type="text" id="p-dep" class="input-field"></div><div class="pt-4 flex justify-between"><button type="button" onclick="deleteProj()" id="btn-del-p" class="text-red-500 text-xs font-bold hidden">Delete</button><button type="submit" class="btn-primary ml-auto">Save Timeline</button></div></form></div></div>
+
+    <!-- LEAD MODAL -->
+    <div id="modal-lead" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col h-[85vh]"><div class="p-4 border-b border-brand-border bg-slate-50 flex justify-between items-center shrink-0"><h3 class="font-bold" id="l-title">Lead Management</h3><button onclick="closeModal('modal-lead')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><div class="flex-1 flex overflow-hidden"><form id="form-lead" class="w-1/2 p-6 space-y-4 overflow-y-auto border-r border-brand-border"><input type="hidden" id="l-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Company</label><input type="text" id="l-comp" required class="input-field"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Contact</label><input type="text" id="l-cont" class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Email/Phone</label><input type="text" id="l-email" class="input-field"></div></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Stage</label><select id="l-stage" class="input-field text-brand-blue font-bold"><option value="1_Target">1. Target</option><option value="2_Contacted">2. Contacted</option><option value="3_Pitch">3. Pitch</option><option value="4_Proposal">4. Proposal</option><option value="5_Won">5. Won</option><option value="6_Lost">6. Lost</option></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Value (₹ L)</label><input type="number" id="l-val" class="input-field"></div></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Owner</label><select id="l-owner" class="input-field"></select></div><div class="pt-2 border-t border-brand-border"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Next Step</label><input type="text" id="l-next" class="input-field mb-2"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Deadline</label><input type="date" id="l-date" class="input-field"></div></div><div class="pt-4"><button type="submit" class="btn-primary w-full">Save Client Data</button><button type="button" onclick="deleteLead()" id="btn-del-l" class="text-red-500 text-xs font-bold mt-4 w-full text-center hidden">Delete Lead</button></div></form><div class="w-1/2 flex flex-col bg-slate-50"><div class="p-3 border-b border-brand-border text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">Chronological Notes</div><div id="l-notes-list" class="flex-1 p-4 overflow-y-auto space-y-3 text-sm"></div><div class="p-3 border-t border-brand-border bg-white shrink-0" id="l-note-input" style="display:none;"><textarea id="l-new-note" rows="2" class="input-field text-xs resize-none mb-2" placeholder="Log interaction..."></textarea><button type="button" onclick="addLeadNote()" class="w-full bg-brand-blue text-white text-xs font-bold py-1.5 rounded">Append Note</button></div></div></div></div></div>
+
+    <!-- MEETING SCHEDULER -->
+    <div id="modal-sched" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden"><div class="p-4 border-b border-amber-200 bg-amber-50 flex justify-between items-center"><h3 class="font-bold text-amber-700"><i class="fa-solid fa-video mr-2"></i>Schedule Sync</h3><button onclick="closeModal('modal-sched')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><form id="form-sched" class="p-6 space-y-4"><input type="hidden" id="m-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Title</label><input type="text" id="m-title" required class="input-field"></div><div class="grid grid-cols-2 gap-4"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Date</label><input type="date" id="m-date" required class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Time</label><input type="time" id="m-time" required class="input-field"></div></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Type</label><select id="m-type" class="input-field"><option value="Internal">Internal Team</option><option value="External">External / Client</option></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Attendees (Comma separated Emails)</label><input type="text" id="m-att" class="input-field" placeholder="guest1@ext.com, cto@iws.com"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Linked Task Context (Optional)</label><select id="m-task" class="input-field"></select></div><div class="pt-4 flex justify-between items-center"><p class="text-[10px] text-slate-400"><i class="fa-solid fa-info-circle mr-1"></i>Generates G-Meet Link automatically.</p><button type="submit" class="btn-primary bg-amber-600 hover:bg-amber-700">Schedule</button></div></form></div></div>
+
+    <!-- LIVE MEETING & AI MODAL -->
+    <div id="modal-live-meet" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl flex flex-col h-[85vh] overflow-hidden"><div class="p-4 border-b border-brand-border bg-slate-50 flex justify-between items-center shrink-0"><div><h3 class="text-lg font-bold text-brand-black" id="live-title">Meeting</h3><p class="text-xs text-slate-500 font-mono mt-1" id="live-date">Date</p></div><button onclick="closeModal('modal-live-meet')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark text-xl"></i></button></div><div class="flex-1 flex overflow-hidden"><div class="w-1/2 border-r border-brand-border flex flex-col bg-amber-50/30"><div class="p-3 bg-amber-100/50 border-b border-amber-200 text-xs font-bold text-amber-700 uppercase tracking-widest flex items-center gap-2"><i class="fa-solid fa-pen-nib"></i> Live Scribble Pad</div><textarea id="live-scribble" class="flex-1 w-full p-6 text-sm resize-none focus:outline-none scribble-pad text-slate-700" placeholder="Type live meeting notes here. Auto-saves on close." oninput="saveScribble()"></textarea></div><div class="w-1/2 flex flex-col bg-white"><div class="p-3 bg-brand-lightBlue border-b border-blue-200 text-xs font-bold text-brand-blue uppercase tracking-widest flex justify-between items-center"><span><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> AI Intelligence</span><button onclick="generateAI()" id="ai-btn" class="bg-brand-blue text-white px-3 py-1 rounded shadow-sm hover:bg-blue-700"><i class="fa-solid fa-robot"></i> Extract</button></div><div class="flex-1 p-6 overflow-y-auto"><div id="ai-output" class="hidden"><div id="ai-loader" class="animate-pulse hidden"><div class="h-2 bg-slate-200 rounded mb-4 w-3/4"></div><div class="h-2 bg-slate-200 rounded mb-4 w-full"></div><div class="h-2 bg-slate-200 rounded mb-4 w-5/6"></div></div><div id="ai-content" class="text-sm text-slate-700 space-y-4"></div></div><div id="ai-empty" class="h-full flex flex-col items-center justify-center text-slate-400 text-center"><i class="fa-solid fa-brain text-4xl mb-3 opacity-20"></i><p class="text-sm">Click extract to let Nexus AI summarize notes<br>and pull Action Items & Deadlines.</p></div></div></div></div></div></div>
+
+    <!-- USER CREATION MODAL (CEO ONLY) -->
+    <div id="modal-user" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"><div class="p-4 border-b border-red-200 bg-red-50 flex justify-between items-center"><h3 class="font-bold text-red-700"><i class="fa-solid fa-lock mr-2"></i>Access Control: User</h3><button onclick="closeModal('modal-user')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><form id="form-user" class="p-6 space-y-4"><input type="hidden" id="u-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Full Name</label><input type="text" id="u-name" required class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">System Role</label><select id="u-role" class="input-field"><option value="admin">Chief of Staff (Admin)</option><option value="sales">Sales Representative</option><option value="project">Project Manager</option><option value="product">Product Manager</option></select></div><div class="pt-4 border-t border-brand-border"><label class="text-[10px] font-bold text-slate-500 uppercase text-brand-blue"><i class="fa-solid fa-key mr-1"></i>Login Credentials</label><div class="grid gap-4 mt-2"><div><input type="email" id="u-email" required class="input-field" placeholder="Login Email"></div><div><input type="text" id="u-pwd" required class="input-field" placeholder="Initial Password"></div></div></div><div class="pt-4 flex justify-between"><button type="button" onclick="deleteUser()" id="btn-del-u" class="text-red-500 text-xs font-bold hidden">Delete User</button><button type="submit" class="btn-primary bg-red-600 hover:bg-red-700 ml-auto">Authorize User</button></div></form></div></div>
+
+    <!-- DOC MODAL -->
+    <div id="modal-doc" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden"><div class="p-4 border-b border-brand-border bg-slate-50 flex justify-between items-center"><h3 class="font-bold">Vault Entry</h3><button onclick="closeModal('modal-doc')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><form id="form-doc" class="p-6 space-y-4"><input type="hidden" id="d-id"><div><label class="text-[10px] font-bold text-slate-500 uppercase">Document Name</label><input type="text" id="d-name" required class="input-field"></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">Category</label><select id="d-cat" class="input-field"><option value="COI">COI</option><option value="GST">GST Return</option><option value="ITR">ITR Record</option><option value="NDA">NDA</option><option value="Other">Other</option></select></div><div><label class="text-[10px] font-bold text-slate-500 uppercase">File Date</label><input type="date" id="d-date" required class="input-field"></div><button type="submit" class="btn-primary w-full">Save Record</button></form></div></div>
+
+    <!-- DATA SYNC MODAL -->
+    <div id="modal-sync" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4"><div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"><div class="p-4 border-b border-green-200 bg-green-50 flex justify-between items-center"><h3 class="font-bold text-brand-excel"><i class="fa-solid fa-database mr-2"></i>Database Import</h3><button onclick="closeModal('modal-sync')" class="text-slate-400 hover:text-black"><i class="fa-solid fa-xmark"></i></button></div><div class="p-6 space-y-4"><p class="text-xs text-slate-500 mb-4">Paste Google Sheet CSV URL or upload local CSV to sync Sales Leads.</p><input type="text" id="sync-url" class="input-field text-xs mb-2" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"><button onclick="syncSheet()" class="btn-primary bg-brand-blue w-full text-xs mb-4">Fetch G-Sheet</button><div class="text-center text-[10px] text-slate-400 uppercase font-bold mb-4">OR</div><input type="file" id="sync-file" accept=".csv" class="hidden" onchange="processCSV(event)"><button onclick="document.getElementById('sync-file').click()" class="w-full border border-brand-excel text-brand-excel py-2 rounded font-bold text-xs hover:bg-brand-excel hover:text-white transition">Upload CSV</button></div></div></div>
+
+    <!-- TOUR OVERLAYS -->
+    <div id="tour-tooltip" class="hidden absolute z-[999999] bg-brand-black text-white p-4 rounded-lg shadow-2xl max-w-xs transition-all"><h4 id="tour-title" class="font-bold text-sm text-brand-blue mb-1">Step</h4><p id="tour-desc" class="text-xs mb-4 text-slate-300">Desc</p><div class="flex justify-between items-center"><span id="tour-prog" class="text-[10px] text-slate-500">1/x</span><button onclick="nextTour()" class="bg-brand-blue text-white text-xs px-3 py-1.5 rounded font-bold">Next <i class="fa-solid fa-arrow-right ml-1"></i></button></div></div>
+    <div id="tour-bg" class="hidden fixed inset-0 z-[999998] bg-black/30 backdrop-blur-[1px]"></div>
+
+    <!-- 🟢 LOGIC CORE 🟢 -->
+    <script>
+        // --- DATA & STATE MANAGEMENT ---
+        const MASTER_KEY = 'iwsNexusMasterV7';
+        let db = {
+            users:[ { id: 'u1', role: 'ceo', name: 'CEO (Master)', email: 'support@indiaweatherstack.com', pwd: 'admin@IWS' } ], // Immutable Master
+            tasks:[], projects:[], leads:[], meetings:[], docs:[], notes: ''
+        };
+        let currentUser = null;
+        const TODAY = "2026-04-21"; // Simulated context date
+
+        function initData() {
+            const stored = JSON.parse(localStorage.getItem(MASTER_KEY));
+            if(stored) { 
+                db = stored; 
+                // Ensure Master CEO exists if somehow deleted
+                if(!db.users.find(u=>u.role==='ceo')) db.users.push({ id:'u1', role:'ceo', name:'CEO', email:'support@indiaweatherstack.com', pwd:'admin@IWS' });
+            } else {
+                // Seed Initial Nexus Structure
+                db.users.push({ id:'u2', role:'sales', name:'Sales Team', email:'sales@indiaweatherstack.com', pwd:'sales@IWS' });
+                db.tasks =[ { id:1, title:'Finalize Deck', cat:'Marketing', owner:'support@indiaweatherstack.com', status:'To Do', start:TODAY, end:'2026-04-25', notes:'20+20 Projections' }, { id:2, title:'API Integration V2', cat:'Technology', owner:'support@indiaweatherstack.com', status:'Ongoing', start:'', end:'2026-04-10', notes:'' } ]; // T2 is overdue
+                db.projects =[ { id:'P1', name:'IWS Platform 1.0', type:'Product', start:'2026-04-01', end:'2026-05-15', progress:60, dep:'' } ];
+                db.leads =[ { id:1, company:'Adani Green', contact:'Ravi M.', email:'ravi@', stage:'3_Pitch', value:120, owner:'support@indiaweatherstack.com', next:'Send NDA', date:'2026-04-25', notes:[] }, { id:2, company:'Tata Power', stage:'1_Target', value:85, owner:'sales@indiaweatherstack.com', next:'Find Contact', date:'2026-04-15', notes:[] } ]; // L2 is overdue
+                db.meetings =[ { id:1, title:'API Sync', date:'2026-04-22', time:'10:00', type:'Internal', att:'support@indiaweatherstack.com', scribble:'', task:'' } ];
+                db.docs =[ { id:1, name:'Incorporation Cert', type:'COI', date:'2025-01-10' } ];
+                saveDB();
+            }
+        }
+
+        function saveDB() { localStorage.setItem(MASTER_KEY, JSON.stringify(db)); if(currentUser) renderAll(); }
+        function exportData() { const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(db,null,2)],{type:'application/json'})); a.download=`IWS_Nexus_${TODAY}.json`; a.click(); }
+        function importData(e) { const r=new FileReader(); r.onload=function(ev){ try{ const imp=JSON.parse(ev.target.result); if(imp.users){db=imp; saveDB(); alert('Restored!');} }catch(err){alert('Invalid file');}}; r.readAsText(e.target.files[0]); }
+
+        // --- AUTH & RBAC ---
+        const ROLE_MAP = { 'ceo':{name:'CEO (Admin)', perms:['dashboard','tasks','projects','sales','meetings','compliance','team']}, 'admin':{name:'Chief of Staff', perms:['dashboard','tasks','projects','sales','meetings','compliance']}, 'sales':{name:'Sales Rep', perms:['dashboard','sales','meetings']}, 'project':{name:'Project Manager', perms:['dashboard','tasks','projects','meetings']}, 'product':{name:'Product Manager', perms:['dashboard','tasks','projects','meetings']} };
+        const NAV_ITEMS =[{id:'dashboard',i:'fa-chart-pie',l:'Nexus Dashboard'},{id:'tasks',i:'fa-list-check',l:'Operations Tracker'},{id:'projects',i:'fa-timeline',l:'Tech Roadmap'},{id:'sales',i:'fa-funnel-dollar',l:'Sales CRM'},{id:'meetings',i:'fa-video',l:'Meeting Hub'},{id:'compliance',i:'fa-vault',l:'Compliance Vault'},{id:'team',i:'fa-lock',l:'Access Control'}];
+
+        function login() {
+            const role = document.getElementById('auth-role').value, email = document.getElementById('auth-email').value, pwd = document.getElementById('auth-pwd').value;
+            const u = db.users.find(x => x.role === role && x.email === email && x.pwd === pwd);
+            if(u) {
+                currentUser = u;
+                document.getElementById('login-screen').classList.add('opacity-0', 'pointer-events-none');
+                setTimeout(()=>document.getElementById('login-screen').classList.add('hidden'),300);
+                document.getElementById('role-badge').innerText = ROLE_MAP[u.role].name;
+                document.getElementById('user-display-email').innerText = u.email;
+                document.getElementById('ceo-notes').value = db.notes || '';
+                
+                // Enforce Field restrictions based on role
+                document.getElementById('l-owner').disabled = (u.role !== 'ceo' && u.role !== 'admin');
+                
+                buildNav(); populateDrops(); renderAll();
+            } else document.getElementById('auth-error').classList.remove('hidden');
+        }
+
+        function logout() { currentUser = null; document.getElementById('login-form').reset(); document.getElementById('login-screen').classList.remove('hidden','opacity-0','pointer-events-none'); }
+
+        function buildNav() {
+            const nav = document.getElementById('nav-menu'); nav.innerHTML = '';
+            const perms = ROLE_MAP[currentUser.role].perms;
+            NAV_ITEMS.forEach(item => { if(perms.includes(item.id)) nav.innerHTML += `<a href="#" id="nav-${item.id}" onclick="switchTab('${item.id}', this)" class="nav-link flex items-center gap-3 py-3 px-4 text-sm text-slate-600 rounded hover:bg-brand-lightBlue hover:text-brand-blue font-medium transition"><i class="fa-solid ${item.i} w-5 text-center"></i> ${item.l}</a>`; });
+            switchTab('dashboard', nav.children[0]);
+        }
+
+        function switchTab(id, el) {
+            document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active')); document.getElementById(`tab-${id}`).classList.add('active');
+            document.querySelectorAll('.nav-link').forEach(l=>l.classList.remove('bg-brand-lightBlue','text-brand-blue')); if(el) el.classList.add('bg-brand-lightBlue','text-brand-blue');
+            document.getElementById('page-title').innerText = NAV_ITEMS.find(n=>n.id===id).l;
+            if(id==='projects') setTimeout(drawGantt, 50);
+        }
+
+        function setTaskView(v) { document.querySelectorAll('.view-content').forEach(t=>t.classList.remove('active')); document.getElementById(`task-view-${v}`).classList.add('active'); document.getElementById('btn-t-list').className=`px-3 py-1 text-xs font-bold rounded ${v==='list'?'bg-brand-black text-white':'text-slate-500 hover:text-black'}`; document.getElementById('btn-t-board').className=`px-3 py-1 text-xs font-bold rounded ${v==='board'?'bg-brand-black text-white':'text-slate-500 hover:text-black'}`; }
+
+        // --- RENDER ENGINE ---
+        const isOverdue = (d, status) => d && d < TODAY && !status.includes('Completed') && !status.includes('Won') && !status.includes('Lost');
+        const fCur = v => v?`₹${v}L`:'₹0';
+        const stBadges = { 'To Do':'bg-slate-100 text-slate-600', 'Ongoing':'bg-blue-50 text-blue-600', 'Completed':'bg-brand-black text-white' };
+        const lStages = {'1_Target':'Target','2_Contacted':'Contacted','3_Pitch':'Pitch','4_Proposal':'Proposal','5_Won':'WON','6_Lost':'LOST'};
+        const getUName = email => { const u = db.users.find(x=>x.email===email); return u ? u.name : email.split('@')[0]; };
+
+        function renderAll() {
+            if(!currentUser) return;
+            const tasks = db.tasks, projs = db.projects, docs = db.docs, meets = db.meetings;
+            const leads = (currentUser.role === 'ceo' || currentUser.role === 'admin') ? db.leads : db.leads.filter(l=>l.owner===currentUser.email);
+            
+            // DASHBOARD
+            let odCount = tasks.filter(t=>isOverdue(t.end, t.status)).length + leads.filter(l=>isOverdue(l.date, l.stage)).length;
+            document.getElementById('dash-tasks').innerText = tasks.filter(t=>t.status!=='Completed').length;
+            document.getElementById('dash-sales').innerText = fCur(leads.filter(l=>l.stage!=='5_Won'&&l.stage!=='6_Lost').reduce((s,l)=>s+(parseFloat(l.value)||0),0));
+            document.getElementById('dash-overdue').innerText = odCount;
+            document.getElementById('dash-meets').innerText = meets.length;
+            const prog = tasks.length ? Math.round((tasks.filter(t=>t.status==='Completed').length / tasks.length)*100) : 0;
+            document.getElementById('dash-prog-text').innerText = prog+'%'; document.getElementById('dash-prog-bar').style.width = prog+'%';
+
+            const dDesk = document.getElementById('dash-my-desk'); dDesk.innerHTML='';
+            const myTasks = tasks.filter(t=>t.owner===currentUser.email && t.status!=='Completed');
+            if(!myTasks.length) dDesk.innerHTML = '<p class="text-xs text-slate-400 italic p-4 text-center">Desk clear.</p>';
+            myTasks.forEach(t=>{ const od=isOverdue(t.end,t.status); dDesk.innerHTML+=`<div class="p-3 border-b border-brand-gray last:border-0 hover:bg-slate-50 flex justify-between cursor-pointer" onclick="editTask(${t.id})"><div><h4 class="font-bold text-sm ${od?'text-red-600':''}">${t.title}</h4><p class="text-[10px] text-slate-500">${t.cat} | Due: ${t.end||'TBD'}</p></div><button onclick="event.stopPropagation(); setTStatus(${t.id},'Completed')" class="text-slate-300 hover:text-green-500"><i class="fa-solid fa-check-circle"></i></button></div>`;});
+
+            // TASKS
+            const tBody = document.getElementById('task-table'); tBody.innerHTML='';
+            ['kb-todo','kb-ongoing','kb-done'].forEach(i=>document.getElementById(i).innerHTML='');
+            tasks.forEach(t=>{
+                const tr = `<tr class="hover:bg-slate-50 cursor-pointer ${isOverdue(t.end,t.status)?'bg-red-50/30':''}" onclick="editTask(${t.id})"><td class="p-4 font-bold">${t.title} ${isOverdue(t.end,t.status)?'<i class="fa-solid fa-triangle-exclamation text-red-500 text-xs ml-1"></i>':''}</td><td class="p-4 text-xs">${t.cat}</td><td class="p-4 text-xs font-medium">${getUName(t.owner)}</td><td class="p-4 font-mono text-[10px]">${t.start||'TBD'}<br><span class="text-slate-400">to ${t.end||'TBD'}</span></td><td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${stBadges[t.status]}">${t.status}</span></td><td class="p-4 text-right"><i class="fa-solid fa-pen text-slate-300"></i></td></tr>`;
+                tBody.innerHTML += tr;
+                const kb = t.status==='To Do'?'kb-todo':t.status==='Ongoing'?'kb-ongoing':'kb-done';
+                document.getElementById(kb).innerHTML += `<div class="bg-white p-3 border rounded shadow-sm hover:border-brand-blue cursor-pointer ${isOverdue(t.end,t.status)?'border-red-300 ring-1 ring-red-100':''}" onclick="editTask(${t.id})"><h4 class="font-bold text-sm leading-tight mb-1">${t.title}</h4><p class="text-[10px] text-slate-500 mb-2">${t.cat}</p><div class="flex justify-between border-t border-brand-gray pt-2 mt-2"><span class="text-[10px] font-medium text-slate-600">${getUName(t.owner)}</span></div></div>`;
+            });
+
+            // PROJECTS
+            const pList = document.getElementById('proj-list'); pList.innerHTML='';
+            projs.forEach(p=>pList.innerHTML+=`<div class="border border-brand-border p-3 rounded shadow-sm hover:border-brand-blue cursor-pointer" onclick="editProj('${p.id}')"><div class="flex justify-between items-start mb-1"><h4 class="font-bold text-sm">${p.name}</h4><span class="text-[9px] bg-slate-100 px-1 rounded">${p.type}</span></div><div class="w-full bg-slate-100 rounded-full h-1 mt-2 mb-1"><div class="bg-brand-blue h-1 rounded-full" style="width: ${p.progress}%"></div></div><p class="text-[9px] text-slate-500 font-mono text-right">${p.progress}%</p></div>`);
+            if(document.getElementById('tab-projects').classList.contains('active')) drawGantt();
+
+            // SALES
+            const sBoard = document.getElementById('sales-kanban'); sBoard.innerHTML='';
+            Object.keys(lStages).forEach(k => {
+                if(k==='6_Lost') return;
+                const sLeads = leads.filter(l=>l.stage===k);
+                sBoard.innerHTML += `<div class="flex-1 min-w-[280px] bg-slate-50/50 rounded-xl border border-brand-border h-full flex flex-col"><div class="p-3 border-b border-brand-border bg-white shrink-0 flex justify-between items-center"><h3 class="font-bold text-slate-700 text-sm">${lStages[k]}</h3><span class="bg-slate-200 text-xs px-1.5 rounded font-bold">${sLeads.length}</span></div><div class="p-3 space-y-3 overflow-y-auto flex-1">${sLeads.map(l=>`<div class="bg-white p-3 border rounded shadow-sm cursor-pointer hover:border-brand-blue ${isOverdue(l.date,l.stage)?'border-red-300 ring-1 ring-red-100':''}" onclick="editLead(${l.id})"><h4 class="font-bold text-sm mb-1">${l.company}</h4><div class="flex justify-between items-end mt-2 pt-2 border-t border-brand-gray"><span class="text-xs font-bold text-brand-blue">${fCur(l.value)}</span><span class="text-[9px] text-slate-500">${getUName(l.owner)}</span></div></div>`).join('')}</div></div>`;
+            });
+
+            // MEETINGS
+            const mList = document.getElementById('meetings-list'); mList.innerHTML='';
+            meets.sort((a,b)=>new Date(a.date+'T'+a.time)-new Date(b.date+'T'+b.time)).forEach(m=>{
+                mList.innerHTML += `<div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm flex flex-col justify-between"><div class="flex justify-between items-start mb-2"><h4 class="font-bold text-lg">${m.title}</h4><button onclick="editMeet(${m.id})" class="text-slate-300 hover:text-black"><i class="fa-solid fa-pen text-xs"></i></button></div><p class="text-xs text-slate-500 font-mono mb-1"><i class="fa-regular fa-calendar mr-1"></i>${m.date} | ${m.time}</p><p class="text-[10px] text-slate-400 mb-4 truncate">Att: ${m.att}</p><div class="flex gap-2"><a href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(m.title)}&dates=${m.date.replace(/-/g,'')}T${m.time.replace(':','')}00/${m.date.replace(/-/g,'')}T${(parseInt(m.time.split(':')[0])+1).toString().padStart(2,'0')}${m.time.split(':')[1]}00&add=${m.att}" target="_blank" class="flex-1 bg-brand-gray text-slate-700 text-center py-2 rounded text-xs font-bold hover:bg-slate-200 transition"><i class="fa-solid fa-video mr-1"></i> GMeet</a><button onclick="openLiveMeet(${m.id})" class="flex-1 bg-brand-black text-white py-2 rounded text-xs font-bold hover:bg-brand-blue transition"><i class="fa-solid fa-pen-nib mr-1"></i> Scribble & AI</button></div></div>`;
+            });
+
+            // VAULT
+            const dList = document.getElementById('doc-list'); dList.innerHTML='';
+            docs.forEach(d=>dList.innerHTML+=`<tr class="hover:bg-slate-50 cursor-pointer" onclick="editDoc(${d.id})"><td class="p-4 font-bold">${d.name}</td><td class="p-4 text-xs">${d.type}</td><td class="p-4 font-mono text-xs text-slate-500">${d.date}</td><td class="p-4 text-right"><i class="fa-solid fa-pen text-slate-300"></i></td></tr>`);
+
+            // TEAM
+            if(currentUser.role==='ceo' || currentUser.role==='admin') {
+                const uList = document.getElementById('team-list'); uList.innerHTML='';
+                db.users.forEach(u=>{
+                    const uT = tasks.filter(x=>x.owner===u.email&&x.status!=='Completed');
+                    uList.innerHTML+=`<div class="bg-white p-5 rounded-xl border border-brand-border shadow-sm cursor-pointer hover:border-brand-blue" onclick="editUser('${u.id}')"><div class="flex items-center gap-3 mb-2"><div class="w-10 h-10 rounded-full bg-brand-black text-white flex justify-center items-center font-bold">${u.name.substring(0,2).toUpperCase()}</div><div><h4 class="font-bold">${u.name}</h4><p class="text-[9px] text-brand-blue uppercase font-bold tracking-widest">${ROLE_MAP[u.role].name}</p></div></div><p class="text-[10px] text-slate-500 mb-2 truncate border-b border-brand-gray pb-2"><i class="fa-solid fa-envelope mr-1"></i>${u.email}</p><p class="text-xs font-bold text-slate-500 mt-2">Active Tasks: ${uT.length}</p></div>`;
+                });
+            }
+        }
+
+        function populateDrops() {
+            const uDrop = `<option value="Unassigned">Unassigned</option>` + db.users.map(u=>`<option value="${u.email}">${u.name} (${u.email})</option>`).join('');
+            document.getElementById('t-owner').innerHTML = uDrop; document.getElementById('l-owner').innerHTML = uDrop;
+            document.getElementById('m-task').innerHTML = `<option value="">None</option>` + db.tasks.map(t=>`<option value="${t.id}">${t.title}</option>`).join('');
+        }
+
+        function drawGantt() { if(!db.projects.length) return; document.getElementById('gantt-chart').innerHTML=''; new Gantt("#gantt-chart", db.projects, {header_height:50, column_width:30, step:24, view_modes:['Day','Week','Month'], bar_height:25, bar_corner_radius:4, arrow_curve:5, padding:18, view_mode:'Week'}); }
+
+        // --- FORM HANDLERS ---
+        const getV = id => document.getElementById(id).value; const setV = (id,v) => document.getElementById(id).value = v||'';
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+        
+        // Tasks
+        function openTaskModal() { document.getElementById('form-task').reset(); setV('t-id',''); document.getElementById('btn-del-t').classList.add('hidden'); openModal('modal-task'); }
+        document.getElementById('form-task').onsubmit = e => { e.preventDefault(); const id = getV('t-id'); const t = {id:id?parseInt(id):Date.now(), title:getV('t-title'), cat:getV('t-cat'), pri:getV('t-pri'), owner:getV('t-owner'), status:getV('t-status'), start:getV('t-start'), end:getV('t-end'), dep:getV('t-dep'), notes:getV('t-notes')}; if(id) db.tasks[db.tasks.findIndex(x=>x.id===parseInt(id))]=t; else db.tasks.push(t); saveDB(); closeModal('modal-task'); };
+        function editTask(id) { const t = db.tasks.find(x=>x.id===id); if(t){ setV('t-id',t.id); setV('t-title',t.title); setV('t-cat',t.cat); setV('t-pri',t.pri); setV('t-owner',t.owner); setV('t-status',t.status); setV('t-start',t.start); setV('t-end',t.end); setV('t-dep',t.dep); setV('t-notes',t.notes); document.getElementById('btn-del-t').classList.remove('hidden'); openModal('modal-task'); } }
+        function deleteTask() { if(confirm('Delete?')){ db.tasks=db.tasks.filter(x=>x.id!==parseInt(getV('t-id'))); saveDB(); closeModal('modal-task'); } }
+        function setTStatus(id,s) { db.tasks.find(x=>x.id===id).status=s; saveDB(); }
+
+        // Projects
+        function openProjectModal() { document.getElementById('form-proj').reset(); setV('p-id',''); document.getElementById('btn-del-p').classList.add('hidden'); openModal('modal-proj'); }
+        document.getElementById('form-proj').onsubmit = e => { e.preventDefault(); const id = getV('p-id')||'P'+Date.now(); const p = {id, name:getV('p-name'), type:getV('p-type'), progress:getV('p-prog'), start:getV('p-start'), end:getV('p-end'), dependencies:getV('p-dep')}; const idx=db.projects.findIndex(x=>x.id===id); if(idx>-1) db.projects[idx]=p; else db.projects.push(p); saveDB(); closeModal('modal-proj'); };
+        function editProj(id) { const p = db.projects.find(x=>x.id===id); if(p){ setV('p-id',p.id); setV('p-name',p.name); setV('p-type',p.type); setV('p-prog',p.progress); setV('p-start',p.start); setV('p-end',p.end); setV('p-dep',p.dependencies); document.getElementById('btn-del-p').classList.remove('hidden'); openModal('modal-proj'); } }
+        function deleteProj() { if(confirm('Delete?')){ db.projects=db.projects.filter(x=>x.id!==getV('p-id')); saveDB(); closeModal('modal-proj'); } }
+
+        // Leads
+        function openLeadModal() { document.getElementById('form-lead').reset(); setV('l-id',''); document.getElementById('btn-del-l').classList.add('hidden'); document.getElementById('l-note-input').style.display='none'; document.getElementById('l-notes-list').innerHTML='<p class="text-xs text-slate-400 italic">Save to log notes.</p>'; if(currentUser.role==='sales') setV('l-owner',currentUser.email); openModal('modal-lead'); }
+        document.getElementById('form-lead').onsubmit = e => { e.preventDefault(); const id = getV('l-id'); const l = {id:id?parseInt(id):Date.now(), company:getV('l-comp'), contact:getV('l-cont'), email:getV('l-email'), stage:getV('l-stage'), value:getV('l-val'), owner:getV('l-owner'), next:getV('l-next'), date:getV('l-date'), notes:id?db.leads.find(x=>x.id===parseInt(id)).notes:[]}; if(id) db.leads[db.leads.findIndex(x=>x.id===parseInt(id))]=l; else db.leads.push(l); saveDB(); closeModal('modal-lead'); };
+        function editLead(id) { const l = db.leads.find(x=>x.id===id); if(l){ setV('l-id',l.id); setV('l-comp',l.company); setV('l-cont',l.contact); setV('l-email',l.email); setV('l-stage',l.stage); setV('l-val',l.value); setV('l-owner',l.owner); setV('l-next',l.next); setV('l-date',l.date); document.getElementById('btn-del-l').classList.remove('hidden'); document.getElementById('l-note-input').style.display='block'; renderLNotes(l.notes); openModal('modal-lead'); } }
+        function renderLNotes(n) { const c = document.getElementById('l-notes-list'); c.innerHTML=''; if(!n||!n.length){c.innerHTML='<p class="text-xs text-slate-400 italic">No notes.</p>';return;} [...n].reverse().forEach(x=>c.innerHTML+=`<div class="bg-white p-2 rounded border border-brand-border shadow-sm"><div class="text-[9px] font-bold text-slate-400 border-b border-brand-gray pb-1 mb-1">${x.d}</div><div class="text-slate-700 text-xs">${x.t}</div></div>`); }
+        function addLeadNote() { const id = parseInt(getV('l-id')), t = getV('l-new-note').trim(); if(!t) return; const l = db.leads.find(x=>x.id===id); l.notes.push({d:new Date().toISOString().split('T')[0], t}); setV('l-new-note',''); saveDB(); renderLNotes(l.notes); }
+        function deleteLead() { if(confirm('Delete?')){ db.leads=db.leads.filter(x=>x.id!==parseInt(getV('l-id'))); saveDB(); closeModal('modal-lead'); } }
+
+        // Users (CEO ONLY)
+        function openTeamModal() { if(currentUser.role!=='ceo'&&currentUser.role!=='admin') return; document.getElementById('form-user').reset(); setV('u-id',''); document.getElementById('btn-del-u').classList.add('hidden'); openModal('modal-user'); }
+        document.getElementById('form-user').onsubmit = e => { e.preventDefault(); const id=getV('u-id')||'u'+Date.now(), email=getV('u-email'); if(!id && db.users.find(x=>x.email===email)) return alert('Email exists!'); const u = {id, role:getV('u-role'), name:getV('u-name'), email, pwd:getV('u-pwd')}; const idx=db.users.findIndex(x=>x.id===id); if(idx>-1) db.users[idx]=u; else db.users.push(u); saveDB(); closeModal('modal-user'); };
+        function editUser(id) { if(id==='u1'&&currentUser.role!=='ceo') return alert('Cannot edit Master CEO.'); const u = db.users.find(x=>x.id===id); if(u){ setV('u-id',u.id); setV('u-role',u.role); setV('u-name',u.name); setV('u-email',u.email); setV('u-pwd',u.pwd); if(id!=='u1') document.getElementById('btn-del-u').classList.remove('hidden'); openModal('modal-user'); } }
+        function deleteUser() { const id=getV('u-id'); if(id==='u1') return alert('Cannot delete Master'); if(confirm('Delete User?')){ db.users=db.users.filter(x=>x.id!==id); saveDB(); closeModal('modal-user'); } }
+
+        // Meetings & AI
+        function openScheduleModal() { document.getElementById('form-sched').reset(); setV('m-id',''); openModal('modal-sched'); }
+        document.getElementById('form-sched').onsubmit = e => { e.preventDefault(); const id=getV('m-id'); const m = {id:id?parseInt(id):Date.now(), title:getV('m-title'), date:getV('m-date'), time:getV('m-time'), type:getV('m-type'), att:getV('m-att'), task:getV('m-task'), scribble:id?db.meetings.find(x=>x.id===parseInt(id)).scribble:''}; if(id) db.meetings[db.meetings.findIndex(x=>x.id===parseInt(id))]=m; else db.meetings.push(m); saveDB(); closeModal('modal-sched'); };
+        function editMeet(id) { const m = db.meetings.find(x=>x.id===id); if(m){ setV('m-id',m.id); setV('m-title',m.title); setV('m-date',m.date); setV('m-time',m.time); setV('m-type',m.type); setV('m-att',m.att); setV('m-task',m.task); openModal('modal-sched'); } }
+        let currentLiveMeet = null;
+        function openLiveMeet(id) { currentLiveMeet = db.meetings.find(x=>x.id===id); document.getElementById('live-title').innerText=currentLiveMeet.title; document.getElementById('live-date').innerText=currentLiveMeet.date; setV('live-scribble',currentLiveMeet.scribble); document.getElementById('ai-output').classList.add('hidden'); document.getElementById('ai-empty').classList.remove('hidden'); document.getElementById('ai-content').innerHTML=''; document.getElementById('ai-btn').innerHTML='<i class="fa-solid fa-robot"></i> Extract'; openModal('modal-live-meet'); }
+        function saveScribble() { if(currentLiveMeet){ currentLiveMeet.scribble = getV('live-scribble'); saveDB(); } }
+        function generateAI() { document.getElementById('ai-empty').classList.add('hidden'); document.getElementById('ai-output').classList.remove('hidden'); document.getElementById('ai-loader').classList.remove('hidden'); document.getElementById('ai-content').innerHTML=''; document.getElementById('ai-btn').innerHTML='<i class="fa-solid fa-spinner fa-spin"></i>'; setTimeout(()=>{ document.getElementById('ai-loader').classList.add('hidden'); document.getElementById('ai-content').innerHTML=`<div class="mb-4"><h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Executive Summary</h4><p class="bg-brand-gray/50 p-3 rounded border border-brand-border text-brand-black leading-relaxed">Based on the scribble pad notes, the team aligned on next steps. Key focus remains on unblocking current dependencies.</p></div><div><h4 class="text-xs font-bold text-brand-blue uppercase tracking-wider mb-2">Extracted Action Items</h4><ul class="space-y-2"><li class="flex gap-2"><input type="checkbox" class="mt-1"><span class="font-medium">Complete follow-up requirements <span class="text-red-500 text-xs ml-1">(Due ASAP)</span></span></li></ul></div>`; document.getElementById('ai-btn').innerHTML='<i class="fa-solid fa-check"></i> Summarized'; }, 1500); }
+
+        // Docs
+        function openDocModal() { document.getElementById('form-doc').reset(); setV('d-id',''); openModal('modal-doc'); }
+        document.getElementById('form-doc').onsubmit = e => { e.preventDefault(); const id=getV('d-id'); const d={id:id?parseInt(id):Date.now(), name:getV('d-name'), type:getV('d-cat'), date:getV('d-date')}; if(id) db.docs[db.docs.findIndex(x=>x.id===parseInt(id))]=d; else db.docs.push(d); saveDB(); closeModal('modal-doc'); };
+
+        // Sync & Notes
+        function saveNotes() { db.notes = getV('ceo-notes'); saveDB(); }
+        function openSyncModal() { openModal('modal-sync'); }
+        function processCSV(e) { const r=new FileReader(); r.onload=function(ev){ parseCSV(ev.target.result); }; r.readAsText(e.target.files[0]); }
+        function syncSheet() { const btn=event.target; btn.innerText="Fetching..."; fetch(getV('sync-url')).then(r=>r.text()).then(csv=>{parseCSV(csv); btn.innerText="Fetch G-Sheet"; closeModal('modal-sync');}).catch(err=>{alert("Error fetching Public CSV URL."); btn.innerText="Fetch G-Sheet";}); }
+        function parseCSV(csv) { const rows=csv.split(/\r?\n/); if(rows.length<2) return alert("Empty/Invalid file."); const headers=rows[0].split(',').map(h=>h.toLowerCase().trim()); let c=0; for(let i=1;i<rows.length;i++){ if(!rows[i].trim()) continue; const v=rows[i].split(','); let l={id:Date.now()+i, notes:[]}; headers.forEach((h,idx)=>{ let val=v[idx]?v[idx].replace(/"/g,'').trim():''; if(h.includes('company'))l.company=val; if(h.includes('contact'))l.contact=val; if(h.includes('email'))l.email=val; if(h.includes('stage'))l.stage=val||'1_Target'; if(h.includes('value'))l.value=parseFloat(val)||0; if(h.includes('owner'))l.owner=val; if(h.includes('next'))l.next=val; if(h.includes('deadline'))l.date=val; }); if(l.company) { db.leads.push(l); c++; } } if(c>0){ saveDB(); alert(`Imported ${c} leads!`); closeModal('modal-sync'); } }
+
+        // --- TOUR ---
+        const TOUR =[ { t:'nav-dashboard', h:'Nexus Dashboard', d:'10,000-foot view of operations, sales, and compliance.' }, { t:'nav-tasks', h:'Operations Tracker', d:'Every task is categorized by the Congruence Model.' }, { t:'nav-team', h:'Access Control', d:'Only the CEO can add users and assign their login emails.' } ];
+        let tIdx = 0;
+        function startTour() { if(currentUser.role!=='ceo'&&currentUser.role!=='admin') return alert('Admin only.'); tIdx=0; document.getElementById('tour-bg').classList.remove('hidden'); document.getElementById('tour-tooltip').classList.remove('hidden'); showTour(); }
+        function showTour() { if(tIdx>=TOUR.length){ endTour(); return; } document.querySelectorAll('.tour-highlight').forEach(el=>el.classList.remove('tour-highlight')); const s=TOUR[tIdx], el=document.getElementById(s.t); if(el){ el.classList.add('tour-highlight'); const rect=el.getBoundingClientRect(), tt=document.getElementById('tour-tooltip'); document.getElementById('tour-title').innerText=s.h; document.getElementById('tour-desc').innerText=s.d; document.getElementById('tour-prog').innerText=`${tIdx+1}/${TOUR.length}`; tt.style.top=`${rect.top}px`; tt.style.left=`${rect.right+20}px`; } }
+        function nextTour() { tIdx++; showTour(); }
+        function endTour() { document.getElementById('tour-bg').classList.add('hidden'); document.getElementById('tour-tooltip').classList.add('hidden'); document.querySelectorAll('.tour-highlight').forEach(el=>el.classList.remove('tour-highlight')); }
+
+        // Init
+        initData();
+        setInterval(()=>document.getElementById('live-clock').innerText=new Date().toLocaleString('en-IN', {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}), 1000);
+    </script>
+</body>
+</html>

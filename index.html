@@ -307,7 +307,6 @@ tbody tr:hover{background:var(--surface2)}
 
 /* ── OVERDUE ── */
 .overdue-row{background:color-mix(in srgb,var(--red) 4%,var(--card-bg))!important}
-.overdue-row td{border-left:2px solid var(--red);}
 .overdue-row td:first-child{border-left:2px solid var(--red)}
 
 /* ── TOUR ── */
@@ -324,6 +323,9 @@ tbody tr:hover{background:var(--surface2)}
 /* ── ANIMATIONS ── */
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── MONO UTILITY ── */
+.font-mono{font-family:'DM Mono',monospace}
 
 /* ── BACKUP PANEL ── */
 .backup-panel{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px}
@@ -639,7 +641,7 @@ tbody tr:hover{background:var(--surface2)}
       </div>
       <div class="grid-2">
         <div class="form-group"><label class="form-label">Login Email *</label><input type="email" class="form-input" id="u-email"></div>
-        <div class="form-group"><label class="form-label">Password *</label><input type="text" class="form-input" id="u-pwd"></div>
+        <div class="form-group"><label class="form-label">Password *</label><input type="password" class="form-input" id="u-pwd"></div>
       </div>
       <div class="form-group">
         <label class="form-label">Notification Email <span style="font-weight:400;color:var(--text3)">(additional email for task/deadline alerts)</span></label>
@@ -1077,6 +1079,10 @@ async function loadDB() {
   DB.products  = DB.products.map(p => ({...p, startDate: p.start_date, endDate: p.end_date}));
   DB.docs      = DB.docs.map(d => ({...d, fileName: d.file_name, fileUrl: d.file_url}));
 
+  // repopulate scribbles from meetings data
+  DB.scribbles = {};
+  DB.meetings.forEach(m => { if(m.scribble) DB.scribbles[m.id] = m.scribble; });
+
   // scratchpad
   if (cu) {
     const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).single();
@@ -1102,14 +1108,19 @@ async function save(table, record, isDelete = false) {
 // ─────────────────────────────────────────────
 //  AUTH
 // ─────────────────────────────────────────────
-function doLogin(){
+async function doLogin(){
   const e=gv('l-email'), p=gv('l-pwd');
   const u=DB.users.find(x=>x.email===e&&x.pwd===p);
   if(!u){ show('login-err'); return; }
   hide('login-err');
   cu=u; hide('login-screen');
+  // Load user-specific scratchpad now that cu is set
+  try {
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).single();
+    DB.scratchpad = data?.content || '';
+  } catch(err) { DB.scratchpad = ''; }
   bootApp();
-  if(u.firstLogin){ u.firstLogin=false; save(); setTimeout(startTour,600); }
+  if(u.firstLogin){ u.firstLogin=false; save('users', {...u, first_login: false}); setTimeout(startTour,600); }
 }
 function doLogout(){ cu=null; show('login-screen'); el('l-email').value=''; el('l-pwd').value=''; }
 
@@ -1224,7 +1235,7 @@ function importBackup(e){
       const d=JSON.parse(ev.target.result);
       if(!d.users) throw new Error('Invalid backup file');
       // preserve current theme
-      DB=d; save();
+      DB=d;
       alert('Backup restored successfully! Refreshing...');
       setTimeout(()=>location.reload(),500);
     }catch(err){ alert('Error reading backup: '+err.message); }
@@ -1388,7 +1399,7 @@ function renderDash(){
 
   el('scratchpad').value=DB.scratchpad||'';
 }
-function saveScratch(){ DB.scratchpad=gv('scratchpad'); save(); }
+function saveScratch(){ DB.scratchpad=gv('scratchpad'); if(cu) save('scratchpad', {user_id:cu.id, content:DB.scratchpad}); }
 
 // ─────────────────────────────────────────────
 //  OPERATIONS
@@ -1476,7 +1487,7 @@ function saveTask(){
   };
   if(eid){ const i=DB.tasks.findIndex(x=>x.id===eid); if(i>-1) DB.tasks[i]=t; }
   else DB.tasks.push(t);
-  save();
+  save('tasks', {id:t.id, title:t.title, category:t.category, link_type:t.linkType, link_id:t.linkId, owner_id:t.ownerId, status:t.status, priority:t.priority, start_date:t.startDate, deadline:t.deadline, progress:t.progress, notes:t.notes});
   // Notifications
   if(isNew && t.ownerId && t.ownerId!==cu.id) notifyTaskAssigned(t);
   if(!isNew && oldTask && oldTask.ownerId!==t.ownerId && t.ownerId!==cu.id) notifyTaskAssigned(t);
@@ -1485,7 +1496,7 @@ function saveTask(){
 function deleteTask(){
   const id=gv('t-eid'); if(!id||!confirm('Delete this task?')) return;
   DB.tasks=DB.tasks.filter(t=>t.id!==id);
-  save(); closeModal('m-task'); renderPage(activePage);
+  save('tasks', {id}, true); closeModal('m-task'); renderPage(activePage);
 }
 
 // ─────────────────────────────────────────────
@@ -1493,8 +1504,8 @@ function deleteTask(){
 // ─────────────────────────────────────────────
 let selProd=null;
 function renderProds(){
-  const sb=el('prod-sidebar');
-  sb.innerHTML=DB.products.map(p=>`<div class="tree-item ${selProd===p.id?'active':''}" onclick="selProduct('${p.id}')">
+  const sidebar=el('prod-sidebar');
+  sidebar.innerHTML=DB.products.map(p=>`<div class="tree-item ${selProd===p.id?'active':''}" onclick="selProduct('${p.id}')">
     <div class="tree-item-name">${p.name}</div>
     <div class="tree-item-meta">${DB.features.filter(f=>f.productId===p.id).length} features</div>
   </div>`).join('')||`<div class="empty-state" style="padding:20px 8px"><i class="fa-solid fa-box-open"></i><div class="es-desc">Add your first product</div></div>`;
@@ -1589,13 +1600,13 @@ function saveFeat(){
   const eid=gv('feat-eid');
   const f={id:eid||uid(),productId:gv('feat-pid'),name,epic:gv('feat-epic'),status:gv('feat-status'),priority:gv('feat-pri'),progress:gv('feat-progress')||0,startDate:gv('feat-start')||null,endDate:gv('feat-end')||null};
   if(eid){const i=DB.features.findIndex(x=>x.id===eid);if(i>-1)DB.features[i]=f;}else DB.features.push(f);
-  save(); closeModal('m-feature'); renderProdDetail(f.productId);
+  save('features', {id:f.id, product_id:f.productId, name:f.name, epic:f.epic, status:f.status, priority:f.priority, progress:f.progress, start_date:f.startDate, end_date:f.endDate}); closeModal('m-feature'); renderProdDetail(f.productId);
 }
 function deleteFeat(){
   const id=gv('feat-eid'); if(!id||!confirm('Delete feature?')) return;
   const f=DB.features.find(x=>x.id===id);
   DB.features=DB.features.filter(x=>x.id!==id);
-  save(); closeModal('m-feature'); if(f) renderProdDetail(f.productId);
+  save('features', {id}, true); closeModal('m-feature'); if(f) renderProdDetail(f.productId);
 }
 function editProduct(id){
   const p=DB.products.find(x=>x.id===id); if(!p) return;
@@ -1608,13 +1619,13 @@ function saveProduct(){
   const eid=gv('prod-eid');
   const p={id:eid||uid(),name,startDate:gv('prod-start')||null,endDate:gv('prod-end')||null,desc:gv('prod-desc')};
   if(eid){const i=DB.products.findIndex(x=>x.id===eid);if(i>-1)DB.products[i]=p;}else{DB.products.push(p);selProd=p.id;}
-  save(); closeModal('m-new-product'); renderProds();
+  save('products', {id:p.id, name:p.name, start_date:p.startDate, end_date:p.endDate, desc:p.desc}); closeModal('m-new-product'); renderProds();
 }
 function deleteProduct(){
   const id=gv('prod-eid'); if(!id||!confirm('Delete product and all features?')) return;
   DB.products=DB.products.filter(p=>p.id!==id); DB.features=DB.features.filter(f=>f.productId!==id);
   if(selProd===id) selProd=null;
-  save(); closeModal('m-new-product'); renderProds();
+  save('products', {id}, true); closeModal('m-new-product'); renderProds();
 }
 
 // ─────────────────────────────────────────────
@@ -1622,8 +1633,8 @@ function deleteProduct(){
 // ─────────────────────────────────────────────
 let selProj=null;
 function renderProjs(){
-  const sb=el('proj-sidebar');
-  sb.innerHTML=DB.projects.map(p=>{
+  const sidebar=el('proj-sidebar');
+  sidebar.innerHTML=DB.projects.map(p=>{
     const hc={Green:'b-green',Amber:'b-amber',Red:'b-red'}[p.health]||'b-gray';
     return `<div class="tree-item ${selProj===p.id?'active':''}" onclick="selProject('${p.id}')">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:4px;margin-bottom:3px">
@@ -1718,13 +1729,13 @@ function saveProjItem(){
   const eid=gv('pi-eid');
   const item={id:eid||uid(),projectId:gv('pi-projid'),name,type:gv('pi-type'),status:gv('pi-status'),progress:parseInt(gv('pi-progress')||0),startDate:gv('pi-start')||null,endDate:gv('pi-end')||null,notes:gv('pi-notes')};
   if(eid){const i=DB.projItems.findIndex(x=>x.id===eid);if(i>-1)DB.projItems[i]=item;}else DB.projItems.push(item);
-  save(); closeModal('m-pitem'); renderProjDetail(item.projectId);
+  save('project_items', {id:item.id, project_id:item.projectId, name:item.name, type:item.type, status:item.status, progress:item.progress, start_date:item.startDate, end_date:item.endDate, notes:item.notes}); closeModal('m-pitem'); renderProjDetail(item.projectId);
 }
 function deleteProjItem(){
   const id=gv('pi-eid'); if(!id||!confirm('Delete item?')) return;
   const i=DB.projItems.find(x=>x.id===id);
   DB.projItems=DB.projItems.filter(x=>x.id!==id);
-  save(); closeModal('m-pitem'); if(i) renderProjDetail(i.projectId);
+  save('project_items', {id}, true); closeModal('m-pitem'); if(i) renderProjDetail(i.projectId);
 }
 function editProject(id){
   const p=DB.projects.find(x=>x.id===id); if(!p) return;
@@ -1739,13 +1750,13 @@ function saveProject(){
   const eid=gv('proj-eid');
   const p={id:eid||uid(),name,phase:gv('proj-phase'),health:gv('proj-health'),startDate:gv('proj-start')||null,endDate:gv('proj-end')||null,desc:gv('proj-desc')};
   if(eid){const i=DB.projects.findIndex(x=>x.id===eid);if(i>-1)DB.projects[i]=p;}else{DB.projects.push(p);selProj=p.id;}
-  save(); closeModal('m-new-project'); renderProjs();
+  save('projects', {id:p.id, name:p.name, phase:p.phase, health:p.health, start_date:p.startDate, end_date:p.endDate, desc:p.desc}); closeModal('m-new-project'); renderProjs();
 }
 function deleteProject(){
   const id=gv('proj-eid'); if(!id||!confirm('Delete project and all items?')) return;
   DB.projects=DB.projects.filter(p=>p.id!==id); DB.projItems=DB.projItems.filter(i=>i.projectId!==id);
   if(selProj===id) selProj=null;
-  save(); closeModal('m-new-project'); renderProjs();
+  save('projects', {id}, true); closeModal('m-new-project'); renderProjs();
 }
 
 // ─────────────────────────────────────────────
@@ -1825,21 +1836,21 @@ function addLeadAct(){
   const l=DB.leads.find(x=>x.id===lid); if(!l) return;
   if(!l.activity) l.activity=[];
   l.activity.push({type:gv('act-type'),text,date:new Date().toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})});
-  save(); renderLeadAct(l.activity); sv('act-text','');
+  save('leads', {id:l.id, company:l.company, contact:l.contact, cemail:l.cemail, source:l.source, owner_id:l.ownerId, stage:l.stage, value:l.value, prob:l.prob, close_date:l.closeDate, next_action:l.nextAction, activity:l.activity}); renderLeadAct(l.activity); sv('act-text','');
 }
 function saveLead(){
   const company=gv('l-company').trim(); if(!company){ alert('Company required'); return; }
   const eid=gv('l-eid');
   const lead={id:eid||uid(),company,contact:gv('l-contact'),cemail:gv('l-cemail'),source:gv('l-source'),ownerId:el('l-owner').value,stage:gv('l-stage'),value:gv('l-value')||0,prob:gv('l-prob')||50,closeDate:gv('l-close')||null,nextAction:gv('l-next'),activity:eid?(DB.leads.find(x=>x.id===eid)?.activity||[]):[]};
   if(eid){const i=DB.leads.findIndex(l=>l.id===eid);if(i>-1)DB.leads[i]=lead;}else DB.leads.push(lead);
-  save(); closeModal('m-lead'); renderSales();
+  save('leads', {id:lead.id, company:lead.company, contact:lead.contact, cemail:lead.cemail, source:lead.source, owner_id:lead.ownerId, stage:lead.stage, value:lead.value, prob:lead.prob, close_date:lead.closeDate, next_action:lead.nextAction, activity:lead.activity}); closeModal('m-lead'); renderSales();
   // enable activity after save
   el('l-act-input').style.display='flex'; el('l-act-input').dataset.lid=lead.id;
 }
 function deleteLead(){
   const id=gv('l-eid'); if(!id||!confirm('Delete lead?')) return;
   DB.leads=DB.leads.filter(l=>l.id!==id);
-  save(); closeModal('m-lead'); renderSales();
+  save('leads', {id}, true); closeModal('m-lead'); renderSales();
 }
 
 // ─────────────────────────────────────────────
@@ -1933,24 +1944,33 @@ function finalSaveMeet(gmeetLink){
   const eid=gv('mt-eid');
   const m={id:eid||uid(),...pendingMeet,gmeetLink:gmeetLink||(eid?DB.meetings.find(x=>x.id===eid)?.gmeetLink:null)};
   if(eid){const i=DB.meetings.findIndex(x=>x.id===eid);if(i>-1)DB.meetings[i]=m;}else DB.meetings.push(m);
-  pendingMeet=null; save(); closeModal('m-meeting'); renderCal();
+  pendingMeet=null; save('meetings', {id:m.id, title:m.title, date:m.date, time:m.time, type:m.type, duration:m.duration, attendees:m.attendees, agenda:m.agenda, gmeet_link:m.gmeetLink}); closeModal('m-meeting'); renderCal();
   if(el('mv-list').style.display!=='none') renderMeetList();
 }
 function deleteMeeting(){
   const id=gv('mt-eid'); if(!id||!confirm('Cancel this meeting?')) return;
   DB.meetings=DB.meetings.filter(m=>m.id!==id);
-  save(); closeModal('m-meeting'); renderCal();
+  save('meetings', {id}, true); closeModal('m-meeting'); renderCal();
 }
 function openScrib(mid){
   const m=DB.meetings.find(x=>x.id===mid); if(!m) return;
   curScribMeet=mid;
   el('scrib-title').textContent=m.title;
   el('scrib-meta').textContent=`${m.date} ${m.time||''} · ${m.type}`;
-  el('scrib-text').value=DB.scribbles[mid]||'';
+  el('scrib-text').value=m.scribble||DB.scribbles[mid]||'';
   el('scrib-gmeet').innerHTML=m.gmeetLink?`<a href="${m.gmeetLink}" target="_blank" class="btn btn-blue btn-sm"><i class="fa-solid fa-video"></i> Join</a>`:'';
   openModal('m-scribble');
 }
-function saveScrib(){ if(!curScribMeet) return; DB.scribbles[curScribMeet]=gv('scrib-text'); save(); closeModal('m-scribble'); }
+function saveScrib(){
+  if(!curScribMeet) return;
+  const text=gv('scrib-text');
+  DB.scribbles[curScribMeet]=text;
+  // also update in-memory meeting object so reopening without a reload works
+  const m=DB.meetings.find(x=>x.id===curScribMeet);
+  if(m) m.scribble=text;
+  save('meetings', {id:curScribMeet, scribble:text});
+  closeModal('m-scribble');
+}
 
 // ─────────────────────────────────────────────
 //  COMPLIANCE VAULT
@@ -1988,12 +2008,12 @@ function saveDoc(){
   const doc={id:eid||uid(),name,category:gv('doc-cat'),fy:gv('doc-fy'),date:gv('doc-date')||null,fileData:vaultFileData||(existing?.fileData||null),fileName:vaultFileName||(existing?.fileName||null)};
   if(eid){const i=DB.docs.findIndex(d=>d.id===eid);if(i>-1)DB.docs[i]=doc;}else DB.docs.push(doc);
   vaultFileData=null; vaultFileName=null;
-  save(); closeModal('m-doc'); renderVault();
+  save('compliance_docs', {id:doc.id, name:doc.name, category:doc.category, fy:doc.fy, date:doc.date, file_data:doc.fileData, file_name:doc.fileName}); closeModal('m-doc'); renderVault();
 }
 function deleteDoc(){
   const id=gv('doc-eid'); if(!id||!confirm('Delete document?')) return;
   DB.docs=DB.docs.filter(d=>d.id!==id);
-  save(); closeModal('m-doc'); renderVault();
+  save('compliance_docs', {id}, true); closeModal('m-doc'); renderVault();
 }
 
 // ─────────────────────────────────────────────
@@ -2053,20 +2073,23 @@ function saveRole(){
   const perms=Array.from(document.querySelectorAll('#perm-grid input:checked')).map(i=>i.value);
   if(!perms.length){ alert('Select at least one permission'); return; }
   const eid=gv('r-eid');
+  let roleRecord;
   if(eid){
     const i=DB.roles.findIndex(r=>r.id===eid); if(i>-1) DB.roles[i]={...DB.roles[i],name,perms};
+    roleRecord = DB.roles.find(r=>r.id===eid);
   } else {
     // Always create truly new role - never overwrite
-    DB.roles.push({id:'role_'+uid(),name,perms});
+    roleRecord = {id:'role_'+uid(),name,perms};
+    DB.roles.push(roleRecord);
   }
-  save(); closeModal('m-role'); renderAccess();
+  save('roles', {id:roleRecord.id, name:roleRecord.name, perms:roleRecord.perms}); closeModal('m-role'); renderAccess();
 }
 function deleteRole(){
   const id=gv('r-eid'); if(!id) return;
   if(DB.users.some(u=>u.roleId===id)){ alert('Reassign users from this role first'); return; }
   if(!confirm('Delete role "'+DB.roles.find(r=>r.id===id)?.name+'"?')) return;
   DB.roles=DB.roles.filter(r=>r.id!==id);
-  save(); closeModal('m-role'); renderAccess();
+  save('roles', {id}, true); closeModal('m-role'); renderAccess();
 }
 function openUserModal(){
   el('m-user-title').textContent='Create User'; sv('u-eid','');
@@ -2089,12 +2112,12 @@ function saveUser(){
   if(!eid && DB.users.find(u=>u.email===email)){ alert('A user with this email already exists'); return; }
   const user={id:eid||uid(),name,email,pwd,roleId,notifEmail:gv('u-notif-email')||'',firstLogin:!eid};
   if(eid){const i=DB.users.findIndex(u=>u.id===eid);if(i>-1)DB.users[i]=user;}else DB.users.push(user);
-  save(); closeModal('m-user'); renderAccess();
+  save('users', {id:user.id, name:user.name, email:user.email, pwd:user.pwd, role_id:user.roleId, notif_email:user.notifEmail, first_login:user.firstLogin}); closeModal('m-user'); renderAccess();
 }
 function deleteUser(){
   const id=gv('u-eid'); if(!id||!confirm('Remove this user?')) return;
   DB.users=DB.users.filter(u=>u.id!==id);
-  save(); closeModal('m-user'); renderAccess();
+  save('users', {id}, true); closeModal('m-user'); renderAccess();
 }
 
 // ─────────────────────────────────────────────
@@ -2161,7 +2184,7 @@ function linkLabel(t){
 // ─────────────────────────────────────────────
 //  INIT
 // ─────────────────────────────────────────────
-function initApp(){ loadDB(); checkDeadlines(); }
+async function initApp(){ await loadDB(); checkDeadlines(); }
 </script>
 </body>
 </html>

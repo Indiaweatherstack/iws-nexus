@@ -1085,8 +1085,8 @@ async function loadDB() {
 
   // scratchpad
   if (cu) {
-    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).maybeSingle();
-    DB.scratchpad = data?.content || '';
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).limit(1);
+    DB.scratchpad = data?.[0]?.content || '';
   }
 
   // ensure sysadmin always exists
@@ -1096,9 +1096,11 @@ async function loadDB() {
 }
 async function save(table, record, isDelete = false) {
   if (isDelete) {
-    await sb.from(table).delete().eq('id', record.id);
+    const { error } = await sb.from(table).delete().eq('id', record.id);
+    if(error) console.error(`[Supabase] DELETE ${table} error:`, error.message, error.details);
   } else {
-    await sb.from(table).upsert(record);
+    const { error } = await sb.from(table).upsert(record);
+    if(error) console.error(`[Supabase] UPSERT ${table} error:`, error.message, error.details, '\nPayload:', JSON.stringify(record));
   }
   await loadDB();
   renderPage(activePage);
@@ -1116,11 +1118,16 @@ async function doLogin(){
   cu=u; hide('login-screen');
   // Load user-specific scratchpad now that cu is set
   try {
-    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).maybeSingle();
-    DB.scratchpad = data?.content || '';
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).limit(1);
+    DB.scratchpad = data?.[0]?.content || '';
   } catch(err) { DB.scratchpad = ''; }
   bootApp();
-  if(u.firstLogin){ u.firstLogin=false; save('users', {id:u.id, name:u.name, email:u.email, pwd:u.pwd, role_id:u.roleId, notif_email:u.notifEmail||'', first_login:false}); setTimeout(startTour,600); }
+  if(u.firstLogin){
+    u.firstLogin=false;
+    // u0 is a local fallback — never write it to Supabase
+    if(u.id !== 'u0') save('users', {id:u.id, name:u.name, email:u.email, pwd:u.pwd, role_id:u.roleId, notif_email:u.notifEmail||'', first_login:false});
+    setTimeout(startTour,600);
+  }
 }
 function doLogout(){ cu=null; show('login-screen'); el('l-email').value=''; el('l-pwd').value=''; }
 
@@ -2112,7 +2119,8 @@ function saveUser(){
   if(!eid && DB.users.find(u=>u.email===email)){ alert('A user with this email already exists'); return; }
   const user={id:eid||uid(),name,email,pwd,roleId,notifEmail:gv('u-notif-email')||'',firstLogin:!eid};
   if(eid){const i=DB.users.findIndex(u=>u.id===eid);if(i>-1)DB.users[i]=user;}else DB.users.push(user);
-  save('users', {id:user.id, name:user.name, email:user.email, pwd:user.pwd, role_id:user.roleId, notif_email:user.notifEmail, first_login:user.firstLogin}); closeModal('m-user'); renderAccess();
+  if(user.id!=='u0') save('users', {id:user.id, name:user.name, email:user.email, pwd:user.pwd, role_id:user.roleId, notif_email:user.notifEmail, first_login:user.firstLogin});
+  closeModal('m-user'); renderAccess();
 }
 function deleteUser(){
   const id=gv('u-eid'); if(!id||!confirm('Remove this user?')) return;

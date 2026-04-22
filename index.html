@@ -1076,7 +1076,7 @@ async function loadDB() {
   DB.projItems = DB.projItems.map(i => ({...i, projectId: i.project_id, startDate: i.start_date, endDate: i.end_date}));
   DB.leads     = DB.leads.map(l => ({...l, ownerId: l.owner_id, closeDate: l.close_date, nextAction: l.next_action}));
   DB.projects  = DB.projects.map(p => ({...p, startDate: p.start_date, endDate: p.end_date}));
-  DB.products  = DB.products.map(p => ({...p, startDate: p.start_date, endDate: p.end_date}));
+  DB.products  = DB.products.map(p => ({...p, startDate: p.start_date, endDate: p.end_date, desc: p.description || p.desc}));
   DB.docs      = DB.docs.map(d => ({...d, fileName: d.file_name, fileUrl: d.file_url}));
 
   // repopulate scribbles from meetings data
@@ -1085,7 +1085,7 @@ async function loadDB() {
 
   // scratchpad
   if (cu) {
-    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).single();
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).maybeSingle();
     DB.scratchpad = data?.content || '';
   }
 
@@ -1116,11 +1116,11 @@ async function doLogin(){
   cu=u; hide('login-screen');
   // Load user-specific scratchpad now that cu is set
   try {
-    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).single();
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).maybeSingle();
     DB.scratchpad = data?.content || '';
   } catch(err) { DB.scratchpad = ''; }
   bootApp();
-  if(u.firstLogin){ u.firstLogin=false; save('users', {...u, first_login: false}); setTimeout(startTour,600); }
+  if(u.firstLogin){ u.firstLogin=false; save('users', {id:u.id, name:u.name, email:u.email, pwd:u.pwd, role_id:u.roleId, notif_email:u.notifEmail||'', first_login:false}); setTimeout(startTour,600); }
 }
 function doLogout(){ cu=null; show('login-screen'); el('l-email').value=''; el('l-pwd').value=''; }
 
@@ -1619,7 +1619,7 @@ function saveProduct(){
   const eid=gv('prod-eid');
   const p={id:eid||uid(),name,startDate:gv('prod-start')||null,endDate:gv('prod-end')||null,desc:gv('prod-desc')};
   if(eid){const i=DB.products.findIndex(x=>x.id===eid);if(i>-1)DB.products[i]=p;}else{DB.products.push(p);selProd=p.id;}
-  save('products', {id:p.id, name:p.name, start_date:p.startDate, end_date:p.endDate, desc:p.desc}); closeModal('m-new-product'); renderProds();
+  save('products', {id:p.id, name:p.name, start_date:p.startDate, end_date:p.endDate, description:p.desc}); closeModal('m-new-product'); renderProds();
 }
 function deleteProduct(){
   const id=gv('prod-eid'); if(!id||!confirm('Delete product and all features?')) return;

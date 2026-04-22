@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,300;9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/frappe-gantt/0.6.1/frappe-gantt.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/frappe-gantt/0.6.1/frappe-gantt.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
@@ -1004,6 +1005,9 @@ window.addEventListener('load', () => {
 // ─────────────────────────────────────────────
 //  DB & DEFAULTS
 // ─────────────────────────────────────────────
+const SUPABASE_URL = 'https://ykqftasfwidjnbmsvrns.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_gRwOdVZO-3JkwqvtZnT5vA_a5b5jBQb';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const KEY = 'iws_nexus_v10';
 const PAGES = [
   {k:'dashboard',l:'Dashboard',i:'fa-chart-pie',g:'core'},
@@ -1037,22 +1041,63 @@ function defaultDB(){
 let DB = {};
 let cu = null; // current user
 
-function loadDB(){
-  try{ const s=localStorage.getItem(KEY); DB=s?JSON.parse(s):defaultDB(); }
-  catch(e){ DB=defaultDB(); }
-  // migrations
-  ['features','projItems','scribbles'].forEach(k=>{ if(!DB[k]) DB[k]=k==='scribbles'?{}:[];});
-  if(!DB.scratchpad) DB.scratchpad='';
-  if(!DB.roles) DB.roles=defaultDB().roles;
-  // ensure sysadmin
-  if(!DB.users.find(u=>u.email==='admin@indiaweatherstack.com')){
-    DB.users.unshift({id:'u0',name:'System Admin',email:'admin@indiaweatherstack.com',pwd:'admin@IWS',roleId:'sysadmin',notifEmail:'',firstLogin:true});
+async function loadDB() {
+  const [roles, users, tasks, products, features, projects, 
+         projItems, leads, meetings, docs] = await Promise.all([
+    sb.from('roles').select('*'),
+    sb.from('users').select('*'),
+    sb.from('tasks').select('*'),
+    sb.from('products').select('*'),
+    sb.from('features').select('*'),
+    sb.from('projects').select('*'),
+    sb.from('project_items').select('*'),
+    sb.from('leads').select('*'),
+    sb.from('meetings').select('*'),
+    sb.from('compliance_docs').select('*'),
+  ]);
+
+  DB.roles     = roles.data     || [];
+  DB.users     = users.data     || [];
+  DB.tasks     = tasks.data     || [];
+  DB.products  = products.data  || [];
+  DB.features  = features.data  || [];
+  DB.projects  = projects.data  || [];
+  DB.projItems = projItems.data || [];
+  DB.leads     = leads.data     || [];
+  DB.meetings  = meetings.data  || [];
+  DB.docs      = docs.data      || [];
+
+  // map snake_case db fields to camelCase used in the app
+  DB.users     = DB.users.map(u => ({...u, roleId: u.role_id, notifEmail: u.notif_email, firstLogin: u.first_login}));
+  DB.tasks     = DB.tasks.map(t => ({...t, linkType: t.link_type, linkId: t.link_id, ownerId: t.owner_id, startDate: t.start_date}));
+  DB.features  = DB.features.map(f => ({...f, productId: f.product_id, startDate: f.start_date, endDate: f.end_date}));
+  DB.projItems = DB.projItems.map(i => ({...i, projectId: i.project_id, startDate: i.start_date, endDate: i.end_date}));
+  DB.leads     = DB.leads.map(l => ({...l, ownerId: l.owner_id, closeDate: l.close_date, nextAction: l.next_action}));
+  DB.projects  = DB.projects.map(p => ({...p, startDate: p.start_date, endDate: p.end_date}));
+  DB.products  = DB.products.map(p => ({...p, startDate: p.start_date, endDate: p.end_date}));
+  DB.docs      = DB.docs.map(d => ({...d, fileName: d.file_name, fileUrl: d.file_url}));
+
+  // scratchpad
+  if (cu) {
+    const { data } = await sb.from('scratchpad').select('content').eq('user_id', cu.id).single();
+    DB.scratchpad = data?.content || '';
   }
-  // add notifEmail field if missing
-  DB.users.forEach(u=>{ if(u.notifEmail===undefined) u.notifEmail=''; });
+
+  // ensure sysadmin always exists
+  if (!DB.users.find(u => u.email === 'admin@indiaweatherstack.com')) {
+    DB.users.unshift({ id:'u0', name:'System Admin', email:'admin@indiaweatherstack.com', pwd:'admin@IWS', roleId:'sysadmin', notifEmail:'', firstLogin:true });
+  }
 }
-function save(){ localStorage.setItem(KEY,JSON.stringify(DB)); }
-function uid(){ return '_'+Math.random().toString(36).slice(2,9)+Date.now().toString(36); }
+async function save(table, record, isDelete = false) {
+  if (isDelete) {
+    await sb.from(table).delete().eq('id', record.id);
+  } else {
+    await sb.from(table).upsert(record);
+  }
+  await loadDB();
+  renderPage(activePage);
+}
+  function uid(){ return '_'+Math.random().toString(36).slice(2,9)+Date.now().toString(36); }
 
 // ─────────────────────────────────────────────
 //  AUTH
